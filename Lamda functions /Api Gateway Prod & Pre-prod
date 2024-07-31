@@ -1,0 +1,55 @@
+import boto3
+import os
+import datetime
+
+# Configuration
+GROUP_NAME_PREPROD = "API-Gateway-Execution-Logs_cdxmvl9lfg/reachx-preprod"
+GROUP_NAME_PRODUCTION = "api-gateway-reachx-production"
+DESTINATION_BUCKET = "drivex-service-logs"
+PREFIX_PREPROD = "API-Gateway-Execution-reachx-preprod-logs/"
+PREFIX_PRODUCTION = "API-Gateway-reachx-prod-logs/"
+NDAYS = 1
+
+# Calculate time range
+currentTime = datetime.datetime.now()
+StartDate = currentTime - datetime.timedelta(days=NDAYS)
+EndDate = currentTime - datetime.timedelta(days=NDAYS - 1)
+
+fromDate = int(StartDate.timestamp() * 1000)
+toDate = int(EndDate.timestamp() * 1000)
+
+# Generate bucket prefixes
+bucket_prefix_preprod = os.path.join(PREFIX_PREPROD, StartDate.strftime('%Y%m%d') + os.path.sep)
+bucket_prefix_production = os.path.join(PREFIX_PRODUCTION, StartDate.strftime('%Y%m%d') + os.path.sep)
+
+def lambda_handler(event, context):
+    client = boto3.client('logs')
+
+    try:
+        # Export logs from pre-prod
+        response_preprod = client.create_export_task(
+            logGroupName=GROUP_NAME_PREPROD,
+            fromTime=fromDate,
+            to=toDate,
+            destination=DESTINATION_BUCKET,
+            destinationPrefix=bucket_prefix_preprod
+        )
+        print("Pre-prod export task response:", response_preprod)
+        
+        # Export logs from production
+        response_production = client.create_export_task(
+            logGroupName=GROUP_NAME_PRODUCTION,
+            fromTime=fromDate,
+            to=toDate,
+            destination=DESTINATION_BUCKET,
+            destinationPrefix=bucket_prefix_production
+        )
+        print("Production export task response:", response_production)
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
+
+    return {
+        'statusCode': 200,
+        'body': 'Export tasks initiated'
+    }
