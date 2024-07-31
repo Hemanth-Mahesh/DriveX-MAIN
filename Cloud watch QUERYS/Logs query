@@ -1,0 +1,16 @@
+# count the numbner of ip address 
+fields @message
+| parse @message 'IP: * ' as ip_address
+| stats count() as count by ip_address
+| sort ip_address
+
+Filter all the logs 
+fields @timestamp, @message, @logStream, @log
+| sort @timestamp desc
+| limit 10000
+
+filter by IP address 
+fields @timestamp, @message
+| filter @message like /49.205.216.171/
+| sort @timestamp desc
+223.186.146.36
