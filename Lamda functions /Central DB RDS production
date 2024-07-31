@@ -1,0 +1,42 @@
+import boto3
+import os
+import datetime
+
+# Configuration
+GROUP_NAME_PRODUCTION = "/aws/rds/instance/central-db-production/postgresql"
+DESTINATION_BUCKET = "rivex-service-logs"
+PREFIX_PRODUCTION = "Central-db-production-postgresql-logs/"
+NDAYS = 1
+
+# Calculate time range
+current_time = datetime.datetime.now()
+start_date = current_time - datetime.timedelta(days=NDAYS)
+end_date = current_time - datetime.timedelta(days=NDAYS - 1)
+
+from_date = int(start_date.timestamp() * 1000)
+to_date = int(end_date.timestamp() * 1000)
+
+# Generate bucket prefixes
+bucket_prefix_production = os.path.join(PREFIX_PRODUCTION, start_date.strftime('%Y%m%d') + os.path.sep)
+
+def lambda_handler(event, context):
+    client = boto3.client('logs')
+
+    try:
+        # Export logs from production
+        response_production = client.create_export_task(
+            logGroupName=GROUP_NAME_PRODUCTION,
+            fromTime=from_date,
+            to=to_date,
+            destination=DESTINATION_BUCKET,
+            destinationPrefix=bucket_prefix_production
+        )
+        print("Production export task response:", response_production)
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
+
+    return {
+        'statusCode': 200,
+        'body': 'Export tasks initiated'
+    }
