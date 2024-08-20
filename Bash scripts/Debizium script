@@ -4,6 +4,8 @@
 docker stop connect kafka zookeeper
 docker rm connect kafka zookeeper
 
+curl -i -X DELETE http://localhost:8083/connectors/stream1
+
 # Run Zookeeper container
 docker run -it -d --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 quay.io/debezium/zookeeper:2.5
 
@@ -16,5 +18,3 @@ docker run -it -d --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TO
 # Create the connector
 curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{ "name": "stream1", "config": { "connector.class": "io.debezium.connector.mysql.MySqlConnector", "tasks.max": "1", "database.hostname": "13.200.153.16", "database.port": "3306", "database.user": "datasync_readonly_prod", "database.password": "vFDxHHABpQYITvg", "database.server.id": "10001", "topic.prefix": "datasync", "database.include.list": "_74482e142a30d6f9", "table.include.list":"_74482e142a30d6f9.tabVehicle Inspection Assignment","schema.history.internal.kafka.bootstrap.servers": "kafka:9092","schema.history.internal.kafka.topic": "schemahistory._74482e142a30d6f9","connector.adapter": "mariadb"} }'
 
-# View logs for the Connect container
-docker logs connect --tail 400
