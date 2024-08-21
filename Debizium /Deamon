@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# Define your container names
+KAFKA_CONTAINER="kafka"
+ZOOKEEPER_CONTAINER="zookeeper"
+CONNECTOR_CONTAINER="connect"
+DJANGO_PROJECT_DIR="/path/to/your/django/project" # Replace with your Django project directory
+
+# Function to stop and remove containers
+stop_and_remove_containers() {
+    echo "Stopping and removing containers..."
+    docker stop $KAFKA_CONTAINER
+    docker stop $ZOOKEEPER_CONTAINER
+    docker stop $CONNECTOR_CONTAINER
+
+    docker rm $KAFKA_CONTAINER
+    docker rm $ZOOKEEPER_CONTAINER
+    docker rm $CONNECTOR_CONTAINER
+}
+
+# Function to run Zookeeper container
+run_zookeeper_container() {
+    echo "Running Zookeeper container..."
+    docker run -it -d --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 quay.io/debezium/zookeeper:2.5
+}
+
+# Function to run Kafka container
+run_kafka_container() {
+    echo "Running Kafka container..."
+    docker run -it -d --name kafka -p 9092:9092 --link zookeeper:zookeeper quay.io/debezium/kafka:2.5
+}
+
+# Function to run Connector container
+run_connector_container() {
+    echo "Running Connector container..."
+    docker run -it -d --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses --link kafka:kafka -e MYSQL_HOST=13.126.20.125 -e MYSQL_PORT=3306 -e MYSQL_USER=datascience_readonly -e MYSQL_PASSWORD=vhdTQX1QiBXwY2XdpiEJoeysM0P5k8 quay.io/debezium/connect:2.5
+}
+
+# Function to restart Django server
+restart_django_server() {
+    echo "Restarting Django server..."
+    cd $DJANGO_PROJECT_DIR
+    python manage.py runserver 0.0.0.0:8000 & # Adjust the port as needed
+}
+
+# Main function
+main() {
+    stop_and_remove_containers
+    run_zookeeper_container
+    run_kafka_container
+    run_connector_container
+    restart_django_server
+    echo "Streaming setup completed."
+}
+
+# Run the main function
+main 
+
+# Create a systemd service file:
+sudo vi /etc/systemd/system/debezium-streaming.service
+
+ZOOKEEPER_CONTAINER="zookeeper"
+CONNECTOR_CONTAINER="connect"
+DJANGO_PROJECT_DIR="/path/to/your/django/project" # Replace with your Django project directory
+
+# Function to stop and remove containers
+stop_and_remove_containers() {
+    echo "Stopping and removing containers..."
+    docker stop $KAFKA_CONTAINER
+    docker stop $ZOOKEEPER_CONTAINER
+    docker stop $CONNECTOR_CONTAINER
+
+    docker rm $KAFKA_CONTAINER
+    docker rm $ZOOKEEPER_CONTAINER
+    docker rm $CONNECTOR_CONTAINER
+}
+
+# Function to run Zookeeper container
+run_zookeeper_container() {
+    echo "Running Zookeeper container..."
+    docker run -it -d --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 quay.io/debezium/zookeeper:2.5
+}
+
+# Function to run Kafka container
+run_kafka_container() {
+    echo "Running Kafka container..."
+    docker run -it -d --name kafka -p 9092:9092 --link zookeeper:zookeeper quay.io/debezium/kafka:2.5
+}
+
+# Function to run Connector container
+run_connector_container() {
+    echo "Running Connector container..."
+    docker run -it -d --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses --link kafka:kafka -e MYSQL_HOST=13.126.20.125 -e MYSQL_PORT=3306 -e MYSQL_USER=datascience_readonly -e MYSQL_PASSWORD=vhdTQX1QiBXwY2XdpiEJoeysM0P5k8 quay.io/debezium/connect:2.5
+}
+
+# Function to restart Django server
+restart_django_server() {
+    echo "Restarting Django server..."
+    cd $DJANGO_PROJECT_DIR
+    python manage.py runserver 0.0.0.0:8000 & # Adjust the port as needed
+}
+
+# Main function
+main() {
+    stop_and_remove_containers
+    run_zookeeper_container
+    run_kafka_container
+    run_connector_container
+    restart_django_server
+    echo "Streaming setup completed."
+}
+
+# Run the main function
+main
+
+#Create a systemd service file: sudo nano /etc/systemd/system/debezium-streaming.service
+
+#Add the following content to the file: 
+[Unit]
+Description=Debezium Streaming Service
+After=network.target
+
+[Service]
+ExecStart=/path/to/debezium_streaming.sh
+Restart=always
+User=your_username
+
+[Install]
+WantedBy=multi-user.target 
+
+#Save and close the file.
+#Reload systemd and start the service: 
+sudo systemctl daemon-reload
+sudo systemctl start debezium-streaming
+
+#Enable the service to start automatically on system boot: sudo systemctl enable debezium-streaming
+#Check the status of the service: sudo systemctl status debezium-streaming
+#View the logs:sudo journalctl -u debezium-streaming -f
