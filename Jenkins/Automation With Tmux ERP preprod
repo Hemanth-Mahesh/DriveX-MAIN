@@ -1,0 +1,57 @@
+#!/bin/bash
+set -xe
+IFS=,
+
+APPLICATION=erpx_preproduction
+CURRENT_TIME=$(date "+%Y_%m_%d-%H_%M_%S")
+CURRENT_DATE=$(date "+%Y_%m_%d")
+BASE_PATH=/var/lib/jenkins/workspace/erp_preproduction/
+DRIVEX_APP_PATH=/home/frappe-user/frappe-bench/apps/drivex/
+FRAPPE_SITES_PATH=/home/frappe-user/frappe-bench/sites/
+BENCH_PATH=/home/frappe-user/frappe-bench/
+FRAPPE_USR=frappe-user
+HOST=
+DEBEZIUM_USR=devops
+DEBEZIUM_HOST=
+GITHUB_TOKEN=
+REPO_URL=https://github.com/DriveX-Mobility-Private-Limited/drivex_erpx.git
+TMUX_SESSION_NAME="django-server"
+
+######################### WELCOME TO ERP_PRE_PROD SERVER ###############################
+ssh -o StrictHostKeyChecking=no -q ${FRAPPE_USR}@${HOST} <<EOSSH
+export NVM_DIR="\$HOME/.nvm"
+    [ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
+whoami && pwd
+# Change to the application directory and pull the latest changes
+cd ${DRIVEX_APP_PATH} || exit
+git pull https://${GITHUB_TOKEN}:x-oauth-basic@github.com/DriveX-Mobility-Private-Limited/drivex_erpx.git PreProd || exit
+# Change to the Frappe path
+cd ${BENCH_PATH} || exit
+bench build --app drivex || exit
+bench --site drivex-preprod migrate || exit
+bench restart || exit
+EOSSH
+
+######################### WELCOME TO DEBEZIUM SERVER ###############################
+ssh -o StrictHostKeyChecking=no -q ${DEBEZIUM_USR}@${DEBEZIUM_HOST} <<EOSSH
+docker ps
+curl -i -X DELETE http://localhost:8083/connectors/stream1 || exit
+docker stop zookeeper kafka connect || exit
+docker rm zookeeper kafka connect || exit
+docker ps -a || exit
+docker run -it -d --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 quay.io/debezium/zookeeper:2.5
+docker run -it -d --name kafka -p 9092:9092 --link zookeeper:zookeeper quay.io/debezium/kafka:2.5
+docker run -it -d --name connect -p 8083:8083 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses --link kafka:kafka -e MYSQL_HOST=13.126.20.125 -e MYSQL_PORT=3306 -e MYSQL_USER=datascience_readonly -e MYSQL_PASSWORD=vhdTQX1QiBXwY2XdpiEJoeysM0P5k8 quay.io/debezium/connect:2.5
+sleep 120
+curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{ "name": "stream1", "config": { "connector.class": "io.debezium.connector.mysql.MySqlConnector", "tasks.max": "1", "database.hostname": "13.126.20.125", "database.port": "3306", "database.user": "datascience_readonly", "database.password": "vhdTQX1QiBXwY2XdpiEJoeysM0P5k8", "database.server.id": "10001", "topic.prefix": "datasync", "database.include.list": "_54a253e90fa4f239","table.include.list":"_54a253e90fa4f239.tabVehicle Inspection Assignment", "schema.history.internal.kafka.bootstrap.servers": "kafka:9092", "schema.history.internal.kafka.topic": "schemahistory._54a253e90fa4f239" ,"connector.adapter": "mariadb"} }'
+# Ensure tmux is installed
+if ! command -v tmux &> /dev/null
+then
+    echo "tmux could not be found, please install tmux."
+    exit 1
+fi
+
+# Create or attach to tmux session and restart Django server
+tmux new-session -d -s ${TMUX_SESSION_NAME} "python manage.py runserver" || exit
+tmux send-keys -t ${TMUX_SESSION_NAME} 'python manage.py restart' C-m
+EOSSH
