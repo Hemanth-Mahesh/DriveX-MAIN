@@ -52,6 +52,6 @@ then
 fi
 
 # Create or attach to tmux session and restart Django server
-tmux new-session -d -s ${TMUX_SESSION_NAME} "python manage.py runserver" || exit
-tmux send-keys -t ${TMUX_SESSION_NAME} 'python manage.py restart' C-m
+tmux new-session -d -s ${TMUX_SESSION_NAME} "python manage.py main runserver" || exit
+tmux send-keys -t ${TMUX_SESSION_NAME} 'python manage.py main restart' C-m
 EOSSH
