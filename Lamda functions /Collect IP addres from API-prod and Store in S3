@@ -1,84 +1,75 @@
 import boto3
 import os
 import datetime
-import re
 import json
-import base64
-import gzip
 
-# Constants
 GROUP_NAME = "api-production"
 DESTINATION_BUCKET = "service-logs"
 PREFIX = "API-prod-logs/"
 NDAYS = 1
-nDays = int(NDAYS)
-
-# Time range calculation
-currentTime = datetime.datetime.now()
-StartDate = currentTime - datetime.timedelta(days=nDays)
-EndDate = currentTime - datetime.timedelta(days=nDays - 1)
-fromDate = int(StartDate.timestamp() * 1000)
-toDate = int(EndDate.timestamp() * 1000)
-
-# S3 client
-s3_client = boto3.client('s3')
 
 def lambda_handler(event, context):
-    client = boto3.client('logs')
+    nDays = int(NDAYS)
+    currentTime = datetime.datetime.now()
+    StartDate = currentTime - datetime.timedelta(days=nDays)
+    EndDate = currentTime - datetime.timedelta(days=nDays - 1)
+    fromDate = int(StartDate.timestamp() * 1000)
+    toDate = int(EndDate.timestamp() * 1000)
+    BUCKET_PREFIX = os.path.join(PREFIX, StartDate.strftime('%Y{0}%m{0}%d').format(os.path.sep))
 
-    # Query logs
+    logs_client = boto3.client('logs')
+    s3_client = boto3.client('s3')
+
+    # CloudWatch Logs Insights query
     query = """
     fields @timestamp, @message
-    | filter @message like /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/
-    | parse @message "* * * *" as ip_address
-    | stats count() by ip_address
+    | parse @message '"ip": "*"' as ip_address
+    | filter ip_address != "-"
+    | stats count(*) as count by ip_address
+    | sort count desc
     """
 
-    # Start a query
-    query_response = client.start_query(
+    # Start the query
+    start_query_response = logs_client.start_query(
         logGroupName=GROUP_NAME,
         startTime=fromDate,
         endTime=toDate,
-        queryString=query,
+        queryString=query
     )
-    query_id = query_response['queryId']
-    
-    # Wait for query to complete
+
+    query_id = start_query_response['queryId']
+
+    # Wait for the query to complete
     response = None
-    while response == None or response['status'] == 'Running':
+    while response is None or response['status'] == 'Running':
         print('Waiting for query to complete ...')
-        response = client.get_query_results(
-            logGroupName=GROUP_NAME,
+        response = logs_client.get_query_results(
             queryId=query_id
         )
-        time.sleep(1)
-    
-    # Extract IP addresses from results
+
+    # Process the results
     ip_addresses = []
-    if response['status'] == 'Complete':
-        for result in response['results']:
-            for field in result:
-                if field['field'] == 'ip_address':
-                    ip_addresses.append(field['value'])
+    for result in response['results']:
+        ip_address = next(item['value'] for item in result if item['field'] == 'ip_address')
+        count = next(item['value'] for item in result if item['field'] == 'count')
+        ip_addresses.append(f"{ip_address},{count}")
 
-    # Remove duplicates
-    ip_addresses = list(set(ip_addresses))
+    # Join the IP addresses into a single string
+    ip_addresses_str = "\n".join(ip_addresses)
 
-    # Prepare data for S3
-    ip_addresses_data = json.dumps(ip_addresses)
-    
-    # Generate a unique file name
-    file_name = f'ip_addresses_{StartDate.strftime("%Y-%m-%d")}.json'
-    
     # Upload to S3
+    file_name = f"ip_addresses_{StartDate.strftime('%Y%m%d')}.csv"
+    s3_key = os.path.join(BUCKET_PREFIX, file_name)
+    
     s3_client.put_object(
         Bucket=DESTINATION_BUCKET,
-        Key=os.path.join(PREFIX, file_name),
-        Body=ip_addresses_data,
-        ContentType='application/json'
+        Key=s3_key,
+        Body=ip_addresses_str
     )
+
+    print(f"IP addresses uploaded to s3://{DESTINATION_BUCKET}/{s3_key}")
 
     return {
         'statusCode': 200,
-        'body': json.dumps('IP addresses successfully extracted and saved to S3.')
+        'body': json.dumps(f"IP addresses uploaded to s3://{DESTINATION_BUCKET}/{s3_key}")
     }
