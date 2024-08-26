@@ -1,0 +1,24 @@
+# cd /etc/systemd/system
+# cd /var/log
+
+[Unit]
+Description=My Python Server Service
+After=network.target
+
+[Service]
+User=devops
+WorkingDirectory=/home/devops/erp_metax/erp-metax-datastreaming/datastreaming
+ExecStart=/home/devops/venv/bin/python /home/devops/erp_metax/erp-metax-datastreaming/datastreaming/manage.py main
+Restart=always
+
+# Log output and errors to specific files
+StandardOutput=append:/var/log/my_server.log
+StandardError=append:/var/log/my_server_error.log
+
+[Install]
+WantedBy=multi-user.target
+
+#sudo systemctl start my_server.service
+#sudo systemctl enable my_server.service
+#sudo systemctl restart my_server.service
+#sudo systemctl status my_server.service
