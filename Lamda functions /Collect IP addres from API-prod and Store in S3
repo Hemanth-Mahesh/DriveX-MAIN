@@ -1,0 +1,84 @@
+import boto3
+import os
+import datetime
+import re
+import json
+import base64
+import gzip
+
+# Constants
+GROUP_NAME = "api-production"
+DESTINATION_BUCKET = "service-logs"
+PREFIX = "API-prod-logs/"
+NDAYS = 1
+nDays = int(NDAYS)
+
+# Time range calculation
+currentTime = datetime.datetime.now()
+StartDate = currentTime - datetime.timedelta(days=nDays)
+EndDate = currentTime - datetime.timedelta(days=nDays - 1)
+fromDate = int(StartDate.timestamp() * 1000)
+toDate = int(EndDate.timestamp() * 1000)
+
+# S3 client
+s3_client = boto3.client('s3')
+
+def lambda_handler(event, context):
+    client = boto3.client('logs')
+
+    # Query logs
+    query = """
+    fields @timestamp, @message
+    | filter @message like /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/
+    | parse @message "* * * *" as ip_address
+    | stats count() by ip_address
+    """
+
+    # Start a query
+    query_response = client.start_query(
+        logGroupName=GROUP_NAME,
+        startTime=fromDate,
+        endTime=toDate,
+        queryString=query,
+    )
+    query_id = query_response['queryId']
+    
+    # Wait for query to complete
+    response = None
+    while response == None or response['status'] == 'Running':
+        print('Waiting for query to complete ...')
+        response = client.get_query_results(
+            logGroupName=GROUP_NAME,
+            queryId=query_id
+        )
+        time.sleep(1)
+    
+    # Extract IP addresses from results
+    ip_addresses = []
+    if response['status'] == 'Complete':
+        for result in response['results']:
+            for field in result:
+                if field['field'] == 'ip_address':
+                    ip_addresses.append(field['value'])
+
+    # Remove duplicates
+    ip_addresses = list(set(ip_addresses))
+
+    # Prepare data for S3
+    ip_addresses_data = json.dumps(ip_addresses)
+    
+    # Generate a unique file name
+    file_name = f'ip_addresses_{StartDate.strftime("%Y-%m-%d")}.json'
+    
+    # Upload to S3
+    s3_client.put_object(
+        Bucket=DESTINATION_BUCKET,
+        Key=os.path.join(PREFIX, file_name),
+        Body=ip_addresses_data,
+        ContentType='application/json'
+    )
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps('IP addresses successfully extracted and saved to S3.')
+    }
