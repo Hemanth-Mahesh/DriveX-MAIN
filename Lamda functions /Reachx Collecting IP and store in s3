@@ -1,0 +1,95 @@
+import boto3
+import os
+import datetime
+import json
+import time
+
+GROUP_NAME = "api-production"
+DESTINATION_BUCKET = "service-logs"
+PREFIX = "API-prod-logs/"
+NDAYS = 1
+MAX_RETRIES = 60  # Maximum number of retries (5 minutes with 5-second intervals)
+
+def lambda_handler(event, context):
+    try:
+        nDays = int(NDAYS)
+        currentTime = datetime.datetime.now()
+        StartDate = currentTime - datetime.timedelta(days=nDays)
+        EndDate = currentTime - datetime.timedelta(days=nDays - 1)
+        fromDate = int(StartDate.timestamp() * 1000)
+        toDate = int(EndDate.timestamp() * 1000)
+        BUCKET_PREFIX = os.path.join(PREFIX, StartDate.strftime('%Y{0}%m{0}%d').format(os.path.sep))
+
+        logs_client = boto3.client('logs')
+        s3_client = boto3.client('s3')
+
+        query = """
+        fields @timestamp, @message
+        | parse @message '"ip": "*"' as ip_address
+        | filter ip_address != "-"
+        | stats count(*) as count by ip_address
+        | sort count desc
+        """
+
+        start_query_response = logs_client.start_query(
+            logGroupName=GROUP_NAME,
+            startTime=fromDate,
+            endTime=toDate,
+            queryString=query
+        )
+
+        query_id = start_query_response['queryId']
+
+        # Wait for the query to complete
+        retries = 0
+        while retries < MAX_RETRIES:
+            response = logs_client.get_query_results(queryId=query_id)
+            if response['status'] != 'Running':
+                break
+            time.sleep(5)
+            retries += 1
+        
+        if response['status'] == 'Running':
+            raise Exception("Query timed out")
+
+        # Process the results
+        ip_addresses = []
+        for result in response.get('results', []):
+            ip_address = next((item['value'] for item in result if item['field'] == 'ip_address'), None)
+            count = next((item['value'] for item in result if item['field'] == 'count'), None)
+            if ip_address and count:
+                ip_addresses.append(f"{ip_address},{count}")
+
+        if not ip_addresses:
+            print("No results found")
+            return {
+                'statusCode': 200,
+                'body': json.dumps("No IP addresses found for the given time range")
+            }
+
+        # Join the IP addresses into a single string
+        ip_addresses_str = "\n".join(ip_addresses)
+
+        # Upload to S3
+        file_name = f"ip_addresses_{StartDate.strftime('%Y%m%d')}.csv"
+        s3_key = os.path.join(BUCKET_PREFIX, file_name)
+        
+        s3_client.put_object(
+            Bucket=DESTINATION_BUCKET,
+            Key=s3_key,
+            Body=ip_addresses_str
+        )
+
+        print(f"IP addresses uploaded to s3://{DESTINATION_BUCKET}/{s3_key}")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(f"IP addresses uploaded to s3://{DESTINATION_BUCKET}/{s3_key}")
+        }
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps(f"Error: {str(e)}")
+        }
