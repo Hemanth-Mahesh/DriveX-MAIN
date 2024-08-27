@@ -14,3 +14,15 @@ StandardError=append:/var/log/my_server_error.log
 
 [Install]
 WantedBy=multi-user.target
+
+#STEPS TO CREATE DEAMON SERVICE
+-----------------------------------------
+1)sudo nano /etc/systemd/system/my_python_server.service
+
+2)sudo touch /var/log/my_server.log /var/log/my_server_error.log
+3)sudo chown devops:devops /var/log/my_server.log /var/log/my_server_error.log
+
+4)sudo systemctl daemon-reload
+5)sudo systemctl start my_python_server
+6)sudo systemctl enable my_python_server
+7)sudo systemctl status my_python_server
