@@ -3,9 +3,9 @@ import os
 import datetime
 import json
 
-GROUP_NAME = "api-production"
-DESTINATION_BUCKET = "service-logs"
-PREFIX = "API-prod-logs/"
+GROUP_NAME = "api-gateway-reachx-production"
+DESTINATION_BUCKET = "drivex-service-logs"
+PREFIX = "API-Gateway-Reachx-prod-IP/"
 NDAYS = 1
 
 def lambda_handler(event, context):
