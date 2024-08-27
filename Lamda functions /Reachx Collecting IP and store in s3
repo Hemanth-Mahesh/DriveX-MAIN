@@ -4,9 +4,9 @@ import datetime
 import json
 import time
 
-GROUP_NAME = "api-production"
-DESTINATION_BUCKET = "service-logs"
-PREFIX = "API-prod-logs/"
+GROUP_NAME = "api-gateway-reachx-production"
+DESTINATION_BUCKET = "drivex-service-logs"
+PREFIX = "API-Gateway-Reachx-prod-IP/"
 NDAYS = 1
 MAX_RETRIES = 60  # Maximum number of retries (5 minutes with 5-second intervals)
 
